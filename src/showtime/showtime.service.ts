@@ -1,11 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ShowtimeEntity } from './entity/showtime.entity';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { ShowtimeSummaryEntity } from './entity/showtimeSummary.entity';
+import { ShowtimeInterface } from 'src/scraper/interface/showtime.interface';
 
 @Injectable()
 export class ShowtimeService {
+  private readonly logger = new Logger(ShowtimeService.name);
+
   constructor(
     @InjectRepository(ShowtimeEntity)
     private showtimeEntityRepository: Repository<ShowtimeEntity>,
@@ -14,14 +17,18 @@ export class ShowtimeService {
     private dataSource: DataSource,
   ) {}
 
-  private async updateShowtimeSummary() {
+  private async updateShowtimeSummary(showtimesIds: string[]) {
+    if (showtimesIds.length === 0) {
+      return;
+    }
+
     await this.dataSource.query(`
         INSERT INTO "showtime-summary"
         ("showtimeDate",
          "cinemaName",
          "movieTitle",
-         attributes,
-         city,
+         "attributes",
+         "city",
          "showtimeCount")
         select date(showtime."showtimeInUTC" AT TIME ZONE 'UTC'),
             showtime."cinemaName",
@@ -30,46 +37,56 @@ export class ShowtimeService {
             showtime.city,
             count(*)
         from "showtime"
+        where showtime."showtimeId" IN (${showtimesIds.map((i) => `'${i}'`)})
         group by 1, 2, 3, 4, 5
         ON CONFLICT
             (
             "showtimeDate",
             "cinemaName",
             "movieTitle",
-            attributes,
-            city
+            "attributes",
+            "city"
             )
             DO UPDATE
-                   SET "showtimeCount"= EXCLUDED."showtimeCount"
+              SET "showtimeCount"= EXCLUDED."showtimeCount" + 1
     `);
-    //TODO: Investigate and resolve the duplication issue in the "showtime-summary" table.
-    // If you check the "showtime-summary" table rows you will notice that there duplicate rows.
-    // Analyze the current aggregation query to identify why duplicates are being created.
-    // Modify the query or the table structure as necessary to prevent duplicate entries.
-    // Ensure your solution maintains data integrity and optimizes performance.
   }
 
-  async addShowtimes(showtimes: ShowtimeInterface[]) {
-    for (const showtime of showtimes) {
+  async addOrReplaceShowtimes(showtimes: ShowtimeInterface[]) {
+    try {
+      const showtimeIds = showtimes.map((item) => item.showtimeId);
+      const existingShowtimes = await this.dataSource
+        .createQueryBuilder()
+        .select("showtime.showtimeId")
+        .from(ShowtimeEntity, 'showtime')
+        .where({
+          showtimeId: In(showtimeIds)
+        })
+        .getRawMany();
+      const existingIds = existingShowtimes.map((item) => item.showtime_showtimeId);
+
+      await this.dataSource
+        .createQueryBuilder()
+        .delete()
+        .from(ShowtimeEntity)
+        .where({
+          showtimeId: In(existingIds)
+        })
+        .execute();
+
       await this.dataSource
         .createQueryBuilder()
         .insert()
         .into(ShowtimeEntity)
-        .values({
-          showtimeId: showtime.showtimeId,
-          movieTitle: showtime.movieTitle,
-          cinemaName: showtime.cinemaName,
-          showtimeInUTC: showtime.showtimeInUTC,
-          bookingLink: showtime.bookingLink,
-          attributes: showtime.attributes,
-        })
+        .values(showtimes)
         .execute();
 
-      //TODO: Implement error handling for cases where a duplicate 'showtimeId' is used during insertion.
-      // Consider how the application should behave in this scenario (e.g., skip, replace, or abort the operation).
-      // Implement the necessary logic and provide feedback or logging for the operation outcome.
-      // Ensure your solution handles such conflicts gracefully without causing data inconsistency or application failure.
+      // presumes that same id means that cinemaName, movieTitle etc are the same
+      const summaryUpdateIds = showtimeIds.filter((id) => !existingIds.includes(id));
+
+      await this.updateShowtimeSummary(summaryUpdateIds);
+    } catch (e) {
+      this.logger.error(`Adding new showtimes failed with error: ${e}`)
     }
-    await this.updateShowtimeSummary();
   }
 }

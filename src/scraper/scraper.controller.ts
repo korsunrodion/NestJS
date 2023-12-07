@@ -1,5 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBadRequestResponse, ApiInternalServerErrorResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ScraperRequestDto } from './dto/scraper-request.dto';
 import { ScraperService } from './scraper.service';
 import { ScraperResponseDto } from './dto/scraper-response.dto';
@@ -12,9 +12,19 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Initiate a new scraping process for the provided URL',
   })
-  // TODO: Complete the Swagger response documentation. Ensure the following:
-  //  1. Document the 200 OK response, utilizing the ScraperResponseDto. This includes a detailed description and potential example values for the fields.
-  //  2. Outline common error responses, such as 400 Bad Request or 404 Not Found, including what circumstances might trigger these errors.
+  @ApiOkResponse({
+    description: 'Successfully parsed showtimes',
+    type: ScraperResponseDto
+  })
+  @ApiNotFoundResponse({
+    description: 'Url not found'
+  })
+  @ApiBadRequestResponse({
+    description: 'Url is not valid'
+  })
+  @ApiInternalServerErrorResponse({
+    description: 'Url cannot be parsed'
+  })
   @Get('scrape')
   scrapeRequest(
     @Query() scrapeRequestDto: ScraperRequestDto,

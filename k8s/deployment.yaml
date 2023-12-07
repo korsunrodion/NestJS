@@ -1,7 +1,39 @@
-# TODO: Create Kubernetes configuration files for the application deployment and service.
-#     Deployment Configuration: Create a 'deployment.yaml' file.
-#    - Define the necessary specifications, including the number of replicas, selector matchLabels, and template spec (such as the container image to use, environment variables, and resources).
-#    - Ensure the deployment strategy is defined to manage updates and rollbacks effectively (consider using RollingUpdate).
-#    - Include configuration for readiness and liveness probes to ensure the Kubernetes system properly manages the application instances' lifecycles.
-#    - Specify any volume mounts if the application needs specific storage resources.
-#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scraper-deployment
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: scraper
+  template:
+    metadata:
+      labels:
+        app: scraper
+    spec:
+      containers:
+        - name: scraper
+          image: scraper-image:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+              name: scraper-secret
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20

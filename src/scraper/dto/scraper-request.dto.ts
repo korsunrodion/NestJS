@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IsUrl } from 'class-validator';
 
 export class ScraperRequestDto {
   @ApiProperty({
@@ -6,7 +7,10 @@ export class ScraperRequestDto {
     required: true,
     example: 'https://www.cinemaplus.az/az/cinema/about-cinemaplus/28-mall/',
   })
-  //TODO: Implement validation for the 'url' field to ensure it contains a valid URL format.
-  // Ensure to handle edge cases, such as trailing slash consistency, allowed protocols (http, https)
+  @IsUrl({
+    protocols: ['http', 'https'],
+    require_protocol: true,
+    require_valid_protocol: true
+  })
   url: string;
 }
